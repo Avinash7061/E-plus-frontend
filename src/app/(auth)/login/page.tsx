@@ -43,6 +43,16 @@ export default function LoginPage() {
     return () => subscription.unsubscribe();
   }, []);
 
+  const handleSignOut = async () => {
+    try {
+      await supabase.auth.signOut();
+    } catch {}
+    setCurrentSessionUser(null);
+    localStorage.removeItem("prahari_token");
+    localStorage.removeItem("prahari_user");
+  };
+
+
   // Resend Countdown timer
   useEffect(() => {
     if (countdown > 0) {

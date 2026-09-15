@@ -92,15 +92,15 @@ export const api = {
 
   // Auth endpoints
   auth: {
-    emailLogin: (email: string, fullName?: string) =>
+    emailLogin: (email: string, password: string, fullName?: string) =>
       request<{ access_token: string; user: any }>("/auth/email-login", {
         method: "POST",
-        body: JSON.stringify({ email, full_name: fullName }),
+        body: JSON.stringify({ email, password, full_name: fullName }),
       }),
-    login: (phone_number: string) =>
+    login: (phone_number: string, password: string, fullName?: string) =>
       request<{ access_token: string; user: any }>("/auth/login", {
         method: "POST",
-        body: JSON.stringify({ phone_number }),
+        body: JSON.stringify({ phone_number, password, full_name: fullName }),
       }),
     register: (phone_number: string, full_name: string, role = "patient") =>
       request<{ access_token: string; user: any }>("/auth/register", {

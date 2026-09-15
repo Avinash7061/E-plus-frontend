@@ -3,7 +3,7 @@ import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { 
   ShieldCheck, Phone, Mail, ArrowRight, AlertCircle, CheckCircle2, 
-  RotateCw, Sparkles, LogOut, User, Zap, KeyRound, Shield
+  RotateCw, LogOut, User, Zap, KeyRound, Shield, Lock, Eye, EyeOff
 } from "lucide-react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabase";
@@ -14,6 +14,7 @@ const QUICK_PROFILES = [
     name: "Julian Vance",
     email: "julian.vance@gmail.com",
     phone: "+91 99900 00001",
+    password: "Password@123",
     role: "Patient Wearer",
     desc: "Active cranial earbud streaming & risk timeline"
   },
@@ -21,6 +22,7 @@ const QUICK_PROFILES = [
     name: "Dr. Arvind Mehta",
     email: "dr.mehta@neuroclinic.in",
     phone: "+91 98201 11223",
+    password: "Password@123",
     role: "Attending Neurologist",
     desc: "Clinician circle & critical threshold alerts"
   },
@@ -28,6 +30,7 @@ const QUICK_PROFILES = [
     name: "Priya Vance",
     email: "priya.vance@family.com",
     phone: "+91 98202 33445",
+    password: "Password@123",
     role: "Family Caregiver",
     desc: "Authorized emergency contact & SOS receiver"
   }
@@ -38,9 +41,11 @@ export default function LoginPage() {
   const [activeTab, setActiveTab] = useState<"email" | "phone">("email");
 
   // Form Fields
-  const [fullName, setFullName] = useState("Julian Vance");
+  const [fullName, setFullName] = useState("");
   const [email, setEmail] = useState("julian.vance@gmail.com");
   const [phone, setPhone] = useState("+91 99900 00001");
+  const [password, setPassword] = useState("Password@123");
+  const [showPassword, setShowPassword] = useState(false);
 
   // State
   const [loading, setLoading] = useState(false);
@@ -75,16 +80,24 @@ export default function LoginPage() {
     setSuccessMsg("Signed out successfully.");
   };
 
-  // Pure JWT Authentication Handler
+  // Pure JWT Authentication Handler with Required Password
   const handleJwtLogin = async (e?: React.FormEvent, customUser?: typeof QUICK_PROFILES[0]) => {
     if (e) e.preventDefault();
     setErrorMsg(null);
     setSuccessMsg(null);
-    setLoading(true);
 
     const loginEmail = customUser ? customUser.email : email.trim().toLowerCase();
     const loginPhone = customUser ? customUser.phone : phone.trim().replace(/\s+/g, "");
-    const loginName = customUser ? customUser.name : fullName.trim() || "Wearer";
+    const loginName = customUser ? customUser.name : fullName.trim();
+    const loginPassword = customUser ? customUser.password : password.trim();
+
+    // Strict Password Validation
+    if (!loginPassword || loginPassword.length < 4) {
+      setErrorMsg("Password is required (minimum 4 characters).");
+      return;
+    }
+
+    setLoading(true);
 
     try {
       let authResponse;
@@ -95,55 +108,47 @@ export default function LoginPage() {
           setLoading(false);
           return;
         }
-        // Direct FastAPI JWT endpoint
-        authResponse = await api.auth.emailLogin(loginEmail, loginName);
+        // Direct FastAPI JWT endpoint with password
+        authResponse = await api.auth.emailLogin(loginEmail, loginPassword, loginName || undefined);
       } else {
         if (!loginPhone || loginPhone.length < 8) {
           setErrorMsg("Please provide a valid phone number with country code.");
           setLoading(false);
           return;
         }
-        // Direct FastAPI JWT endpoint
-        authResponse = await api.auth.login(loginPhone);
+        // Direct FastAPI JWT endpoint with password
+        authResponse = await api.auth.login(loginPhone, loginPassword, loginName || undefined);
       }
 
       if (authResponse && authResponse.access_token) {
-        // 1. Store JWT token for API requests
+        // Store JWT token for API requests
         setAuthToken(authResponse.access_token);
         localStorage.setItem("prahari_user", JSON.stringify(authResponse.user));
 
-        // 2. Sync profile to Supabase database
+        // Sync profile to Supabase database
         try {
           await supabase.from("users").upsert({
             id: authResponse.user.id,
             email: authResponse.user.email || loginEmail,
             phone_number: authResponse.user.phone_number || loginPhone,
-            full_name: authResponse.user.full_name || loginName,
+            full_name: authResponse.user.full_name || loginName || "Wearer",
             role: authResponse.user.role || "patient",
           }, { onConflict: "id" });
         } catch {}
 
         setCurrentSessionUser(authResponse.user);
-        setSuccessMsg("✓ Authenticated via 7-Day JWT Token! Redirecting to companion...");
+        setSuccessMsg("✓ Authenticated via 7-Day JWT Token! Entering companion...");
         
         setTimeout(() => {
           router.push("/");
-        }, 600);
+        }, 500);
       } else {
-        throw new Error("Did not receive a valid JWT access token from authentication service.");
+        throw new Error("Invalid credentials or access token not received.");
       }
     } catch (err: any) {
       console.error("JWT login failed:", err);
-      // Fallback: If backend is unreachable, allow graceful direct entry
-      const fallbackUser = {
-        id: "offline-user-" + Date.now(),
-        email: loginEmail,
-        full_name: loginName,
-        role: "patient"
-      };
-      localStorage.setItem("prahari_user", JSON.stringify(fallbackUser));
-      setSuccessMsg("✓ Authenticated (Local Session). Redirecting...");
-      setTimeout(() => router.push("/"), 700);
+      // Strictly report error — no bypass to dashboard
+      setErrorMsg(err.message || "Authentication failed: Invalid email/phone or password.");
     } finally {
       setLoading(false);
     }
@@ -157,7 +162,7 @@ export default function LoginPage() {
           <ShieldCheck size={32} />
         </div>
         <h1 className="text-2xl font-black text-[#222f30] tracking-tight">E+ Health Companion</h1>
-        <p className="text-xs text-[#445e5f] mt-1">Continuous Biometric & Neurological Anomaly Engine</p>
+        <p className="text-xs text-[#445e5f] mt-1">Continuous Biometric &amp; Neurological Anomaly Engine</p>
       </div>
 
       {/* Active Session Notification Card */}
@@ -233,24 +238,11 @@ export default function LoginPage() {
         )}
 
         {/* Direct JWT Login Form */}
-        <form onSubmit={handleJwtLogin} className="space-y-4">
-          <div>
-            <label className="block text-xs font-bold text-zinc-600 uppercase mb-1">
-              Full Name
-            </label>
-            <input
-              type="text"
-              value={fullName}
-              onChange={(e) => setFullName(e.target.value)}
-              placeholder="e.g. Julian Vance"
-              className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-200 text-sm text-[#222f30] focus:outline-none focus:ring-2 focus:ring-[#a7e26e]"
-            />
-          </div>
-
+        <form onSubmit={handleJwtLogin} className="space-y-3.5">
           {activeTab === "email" ? (
             <div>
               <label className="block text-xs font-bold text-zinc-600 uppercase mb-1">
-                Email Address
+                Email Address <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <Mail size={16} className="absolute left-3.5 top-3 text-zinc-400" />
@@ -267,7 +259,7 @@ export default function LoginPage() {
           ) : (
             <div>
               <label className="block text-xs font-bold text-zinc-600 uppercase mb-1">
-                Mobile Number
+                Mobile Number <span className="text-rose-500">*</span>
               </label>
               <div className="relative">
                 <Phone size={16} className="absolute left-3.5 top-3 text-zinc-400" />
@@ -283,6 +275,47 @@ export default function LoginPage() {
             </div>
           )}
 
+          {/* Required Password Field */}
+          <div>
+            <div className="flex justify-between items-center mb-1">
+              <label className="block text-xs font-bold text-zinc-600 uppercase">
+                Password <span className="text-rose-500">*</span>
+              </label>
+              <span className="text-[10px] text-zinc-400">Required</span>
+            </div>
+            <div className="relative">
+              <Lock size={16} className="absolute left-3.5 top-3 text-zinc-400" />
+              <input
+                type={showPassword ? "text" : "password"}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Enter your account password"
+                className="w-full pl-10 pr-10 py-2.5 rounded-xl border border-zinc-200 text-sm text-[#222f30] focus:outline-none focus:ring-2 focus:ring-[#a7e26e]"
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-3 text-zinc-400 hover:text-zinc-600"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <label className="block text-xs font-bold text-zinc-600 uppercase mb-1">
+              Full Name <span className="text-zinc-400 font-normal lowercase">(optional for registration)</span>
+            </label>
+            <input
+              type="text"
+              value={fullName}
+              onChange={(e) => setFullName(e.target.value)}
+              placeholder="e.g. Julian Vance"
+              className="w-full px-3.5 py-2.5 rounded-xl border border-zinc-200 text-sm text-[#222f30] focus:outline-none focus:ring-2 focus:ring-[#a7e26e]"
+            />
+          </div>
+
           {/* Primary Action Button */}
           <button
             type="submit"
@@ -292,12 +325,12 @@ export default function LoginPage() {
             {loading ? (
               <>
                 <RotateCw size={16} className="animate-spin text-[#a7e26e]" />
-                <span>Issuing Secure JWT Token...</span>
+                <span>Verifying Credentials &amp; Issuing JWT...</span>
               </>
             ) : (
               <>
                 <KeyRound size={16} className="text-[#a7e26e]" />
-                <span>Sign In with JWT (Instant Access)</span>
+                <span>Sign In with JWT</span>
                 <ArrowRight size={16} />
               </>
             )}
@@ -308,9 +341,9 @@ export default function LoginPage() {
         <div className="mt-6 pt-5 border-t border-zinc-100">
           <div className="flex items-center justify-between mb-3">
             <span className="text-xs font-bold text-zinc-500 uppercase tracking-wider flex items-center gap-1">
-              <Zap size={13} className="text-amber-500" /> 1-Tap Quick Profiles
+              <Zap size={13} className="text-amber-500" /> Demo Test Profiles
             </span>
-            <span className="text-[10px] text-zinc-400 font-mono">Instant JWT</span>
+            <span className="text-[10px] text-zinc-400 font-mono">Auto-Password</span>
           </div>
 
           <div className="space-y-2">
@@ -318,7 +351,13 @@ export default function LoginPage() {
               <button
                 key={p.email}
                 type="button"
-                onClick={() => handleJwtLogin(undefined, p)}
+                onClick={() => {
+                  setEmail(p.email);
+                  setPhone(p.phone);
+                  setPassword(p.password);
+                  setFullName(p.name);
+                  handleJwtLogin(undefined, p);
+                }}
                 disabled={loading}
                 className="w-full p-2.5 rounded-xl border border-zinc-200 hover:border-[#a7e26e] hover:bg-[#a7e26e]/10 text-left transition-all flex items-center justify-between group"
               >
@@ -337,14 +376,12 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Security / Architecture Footer */}
+        {/* Security Footer */}
         <div className="mt-6 pt-4 border-t border-zinc-100 flex items-center justify-between text-[11px] text-[#445e5f]">
           <span className="flex items-center gap-1">
-            <Shield size={12} className="text-emerald-600" /> HMAC-SHA256 JWT
+            <Shield size={12} className="text-emerald-600" /> PBKDF2 Password + HMAC-SHA256 JWT
           </span>
-          <Link href="/risk-calculator" className="hover:underline font-semibold text-[#222f30]">
-            Risk ML Calculator &rarr;
-          </Link>
+          <span className="text-zinc-400 font-medium">Authentication Enforced</span>
         </div>
       </div>
     </div>

@@ -69,9 +69,13 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
     headers["Authorization"] = `Bearer ${token}`;
   }
 
+  // 15-second timeout to prevent indefinite pending state
+  const signal = options.signal || (typeof AbortSignal !== "undefined" && "timeout" in AbortSignal ? AbortSignal.timeout(15000) : undefined);
+
   const response = await fetch(`${API_BASE_URL}${endpoint}`, {
     ...options,
     headers,
+    signal,
   });
 
   if (!response.ok) {
